@@ -1,25 +1,164 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+title: "Module4_Reproducible_Research"
+date: "December 16, 2016"
+output: html_document
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
 
-## Loading and preprocessing the data
+## Week2 Project
+### Below are the objectives of the project:-  
+1.Histogram of the total number of steps taken each day  
+2.Mean and median number of steps taken each day  
+3.Time series plot of the average number of steps taken  
+4.The 5-minute interval that, on average, contains the maximum number of steps  
+5.Show strategy for imputing missing data  
+6.Histogram of the total number of steps taken each day after missing values are imputed  
+7.Panel plot comparing the average number of steps taken per 5-minute interval across weekdays and weekends  
+
+#### General processing
+```{r results='hide', message=FALSE, warning=FALSE}
+library(Hmisc)
+library(dplyr)
+library(ggplot2)
+library(plyr)
+library(gridExtra)
+setwd("C:/Users/212446591/Desktop/coursera/Assignment/5. Reproducible Research/Week2/Project")
+csv <- read.csv("activity.csv")
+new_df<-tbl_df(csv)
+```
+  
+  
+#### Objective 1: Histogram of the total number of steps taken each day 
+  
+```{r objective 1}
+## Adding weekday/end definition
+new_df <- mutate(new_df,day = ifelse(weekdays(as.Date(date)) %in% c("Saturday","Sunday"),"weekend","weekday"))
+## Aggregate data frame by date
+TotalSteps<-aggregate(new_df$steps, by=list(Day=new_df$date), FUN=sum,na.rm=TRUE)
+# 0 values are removed from histogram
+TotalSteps <- filter(TotalSteps,x != 0)
+## Plotting
+p1<-ggplot(data=TotalSteps, aes(TotalSteps$x)) +  
+  geom_histogram(col="red",binwidth=2000,aes(fill=..count..,y=..density..) ) +  
+  scale_fill_gradient("Count", low = "green", high = "red") + 
+  xlab("Total Steps") + ylab("Density") + geom_density() + ggtitle("Histogram of the total number of steps taken by day")
+print(p1)
+
+```
+
+#### Objective 2: Mean and median number of steps taken each day
+```{r objective 2}
+## Summarize mean & Median  by date
+ddply(new_df, .(date), summarize, mean=mean(steps,na.rm=TRUE), median=median(steps))
+```
 
 
+#### Objective 3: Time series plot of the average number of steps taken
+```{r objective 3, fig.width=12}
+## Aggregate data frame by interval and find mean & Max
+TotalSteps_by_Interval<-ddply(new_df, .(interval), summarize,Mean=mean(steps,na.rm=TRUE),Max=max(steps,na.rm=TRUE))
+## Find data which has maximum mean across days by interval
+max_Mean_interval<-TotalSteps_by_Interval[which.max(TotalSteps_by_Interval$Mean),]$interval
+## Plotting
+ggplot(data = TotalSteps_by_Interval, aes(x = interval, y = Mean)) + 
+  geom_line() + geom_point(size=1, shape=21, fill="red") + 
+  xlab("Interval") +   ylab("Mean Steps") + 
+  scale_x_continuous(breaks=seq(0,2355,100)) + ggtitle("Time series plot of the average number of steps by interval") +
+  geom_vline(aes(xintercept=max_Mean_interval), colour="#00FF00", linetype="dashed") + 
+  geom_text(aes(max_Mean_interval, 0, label = max_Mean_interval, hjust = 1), size = 2)
 
-## What is mean total number of steps taken per day?
+```
+
+#### Objective 4: The 5-minute interval that, on average, contains the maximum number of steps 
+```{r objective 4, fig.width=12}
+## Find data which has maximum steps across days by interval
+max_interval<-TotalSteps_by_Interval[which.max(TotalSteps_by_Interval$Max),]$interval
+## Plotting
+ggplot(data = TotalSteps_by_Interval, aes(x = interval, y = Max)) + 
+  geom_line()+   geom_point(size=1, shape=21, fill="red") + 
+  xlab("Interval") + ylab("Max Steps") +
+  scale_x_continuous(breaks=seq(0,2355,100)) + ggtitle("Time series plot of the maximum number of steps by interval") +
+  geom_vline(aes(xintercept=max_interval), colour="#00FF00", linetype="dashed") + 
+  geom_text(aes(max_interval, 0, label = max_interval, hjust = 1), size = 2)
+```
+
+#### Objective 5: Show strategy for imputing missing
+There are __`r ((nrow(new_df) - sum(complete.cases(new_df))) / nrow(new_df)) * 100 `__ % missing values of steps in complete dateset.  
+
+#####Strategy for imputing data:  
+1. Divide the dataset by group of interval
+2. Find the mean of that group of interval
+3. Substituting NAs with mean of that group 
+
+##### Comparing Lineplots of Mean by Interval 
+```{r objective 5, fig.width=12}
+## Imputing missing steps values using Hmisc pacakge
+new_df<-ddply(new_df, .(interval), transform, imputed_steps = impute(steps,mean))
+## Mean and median after imputing. Not printed on the markdown
+Mean_Median_Steps1<-ddply(new_df, .(date), summarize, mean=mean(imputed_steps), median=median(imputed_steps))
+## Aggregate data frame by interval and find mean for imputed steps
+TotalSteps_by_Interval1<-ddply(new_df, .(interval), summarize, Mean=mean(imputed_steps))
+## Plotting
+p3<-ggplot(data = TotalSteps_by_Interval, aes(x = interval, y = Mean)) + 
+  geom_line()+  geom_point(size=1, shape=21, fill="red") + 
+  xlab("Interval") +   ylab("Mean Steps") + ggtitle("Time series plot of steps by interval") +scale_x_continuous(breaks=seq(0,2355,100))
+p4 <-ggplot(data = TotalSteps_by_Interval1, aes(x = interval, y = Mean)) + 
+  geom_line()+  geom_point(size=1, shape=21, fill="yellow") + 
+  xlab("Interval") + ylab("Mean Imputed Steps") + scale_x_continuous(breaks=seq(0,2355,100))
+## comparing side by side
+grid.arrange(p3, p4, nrow=2)
+```
+
+_Above plot shows that imputed values fit perfectly._  
+
+  
+  
+#### Objective 6: Comparing Histograms
+```{r objective 6, fig.width=12}
+## Aggregate data frame by date
+TotalSteps_imputed<-aggregate(new_df$imputed_steps, by=list(Day=new_df$date), FUN=sum)
+## plotting with imputed values
+p2 <- ggplot(data=TotalSteps_imputed, aes(TotalSteps_imputed$x)) + 
+  geom_histogram(col="red",binwidth=2000,aes(fill=..count..,y=..density..) ) +  
+  scale_fill_gradient("Count", low = "green", high = "red") + 
+  xlab("Total Imputed Steps") +   ylab("Density") +   geom_density()
+## comparing side by side
+grid.arrange(p1, p2, nrow=2)
+
+```
+  
+  
+#### Objective 7: Panel plot comparing the average number of steps taken per 5-minute interval across weekdays and weekends  
 
 
+  
+```{r objective 7, fig.width=12} 
+## find data of average imputed steps by interval for all weekday
+wkday_TotalSteps_by_Interval <- ddply(filter(new_df,day=="weekday"), .(interval), summarize, Mean=mean(imputed_steps))
+wkday_TotalSteps_by_Interval$day = "weekday"
+## find data of average imputed steps by interval for all weekend
+wendday_TotalSteps_by_Interval<-ddply(filter(new_df,day=="weekend"), .(interval), summarize, Mean=mean(imputed_steps))
+wendday_TotalSteps_by_Interval$day = "weekend"
+## row level binding
+new_df1 <- rbind(wkday_TotalSteps_by_Interval,wendday_TotalSteps_by_Interval)
+## plotting
+ggplot(data = new_df1, aes(x = interval, y = Mean,color=day)) + geom_line()+
+  geom_point(size=1, shape=21, fill="white") + xlab("Interval") + ylab("Mean Steps") +  facet_grid(day~ .) + ggtitle("Mean steps by interval") + scale_x_continuous(breaks=seq(0,2355,250))
+```
 
-## What is the average daily activity pattern?
-
-
-
-## Imputing missing values
-
-
-
-## Are there differences in activity patterns between weekdays and weekends?
+#### Cleanup
+```{r results='hide', message=FALSE, warning=FALSE}
+rm(new_df1)
+rm(new_df)
+rm(TotalSteps_by_Interval)
+rm(TotalSteps_by_Interval1)
+rm(wkday_TotalSteps_by_Interval)
+rm(wendday_TotalSteps_by_Interval)
+rm(TotalSteps_imputed)
+rm(p1)
+rm(p2)
+rm(p3)
+rm(p4)
